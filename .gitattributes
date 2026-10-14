@@ -1,0 +1,7 @@
+# 全量海报 / 视频 用 git-lfs 管理（数万张 PNG / mp4 体积很大）
+downloads/posters/**.png     filter=lfs diff=lfs merge=lfs -text
+downloads/videos/**.mp4      filter=lfs diff=lfs merge=lfs -text
+
+# 数据文件通常不大，普通 git 管理即可；
+# 若全量 wallpapers.json 超过几 MB，也可改为 LFS：
+# downloads/data/*.json       filter=lfs diff=lfs merge=lfs -text

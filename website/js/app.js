@@ -21,6 +21,17 @@ async function loadAll() {
   applyFilters();
 }
 
+// 本地海报路径（由 scripts/sync_site.py 生成），缺失时回退远端 URL
+function localPoster(w) {
+  const base = (w.poster || '').split('/').pop();
+  if (!base) return '';
+  return `posters/${w.source || 'homeView'}/${base}`;
+}
+
+function withRemoteFallback(w, imgEl) {
+  imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = w.poster; };
+}
+
 function applyFilters() {
   const cat = document.querySelector('.cat-tab.active')?.dataset.cat || '全部';
   const kw = (document.getElementById('searchInput').value || '').trim().toLowerCase();
@@ -58,7 +69,7 @@ function renderGrid() {
   grid.innerHTML = pageItems.map(w => `
     <div class="card" data-id="${w.id}">
       <div class="card-media">
-        <img loading="lazy" src="${w.poster}" alt="${escapeHtml(w.title)}">
+        <img loading="lazy" src="${localPoster(w) || w.poster}" alt="${escapeHtml(w.title)}">
         <span class="card-badge">${escapeHtml(w.category || '壁纸')}</span>
       </div>
       <div class="card-title" title="${escapeHtml(w.title)}">${escapeHtml(w.title)}</div>
@@ -69,8 +80,11 @@ function renderGrid() {
     </div>
   `).join('');
 
-  grid.querySelectorAll('.card').forEach(c =>
-    c.addEventListener('click', () => openDetail(c.dataset.id)));
+  grid.querySelectorAll('.card').forEach(c => {
+    c.addEventListener('click', () => openDetail(c.dataset.id));
+    const img = c.querySelector('img');
+    if (img) withRemoteFallback(pageItems.find(w => w.id === c.dataset.id), img);
+  });
 }
 
 function escapeHtml(s = '') {
