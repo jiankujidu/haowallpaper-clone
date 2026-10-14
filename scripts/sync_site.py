@@ -40,7 +40,7 @@ def sync_posters(data, copied_set):
             rel = f"{source}/{base}"
         if rel in copied_set:
             continue
-        src = ROOT / "downloads" / rel
+        src = ROOT / "downloads" / "posters" / rel
         if not src.exists():
             continue
         dst = DST_POSTERS / rel

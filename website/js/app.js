@@ -21,8 +21,14 @@ async function loadAll() {
   applyFilters();
 }
 
-// 本地海报路径（由 scripts/sync_site.py 生成），缺失时回退远端 URL
+// 本地海报路径：优先用数据里的 localPoster（scrape.py 生成的，匹配磁盘真实文件名），缺失时回退远端 URL
 function localPoster(w) {
+  // localPoster 形如 "downloads\posters\homeView\xxx.png"，取 posters/ 之后的部分作为网站相对路径
+  if (w.localPoster) {
+    const norm = w.localPoster.replace(/\\/g, '/');
+    const idx = norm.indexOf('posters/');
+    if (idx !== -1) return norm.slice(idx);
+  }
   const base = (w.poster || '').split('/').pop();
   if (!base) return '';
   return `posters/${w.source || 'homeView'}/${base}`;

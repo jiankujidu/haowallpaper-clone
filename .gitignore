@@ -18,4 +18,5 @@ downloads/scrape_full.log
 # 本地采集的海报资产（体积大，不进 git；将来有远程 + git-lfs 后取消下行忽略）
 downloads/posters/
 downloads/videos/
+website/posters/
 website/preview.log
