@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 """
-哲风壁纸 clone —— 全站采集脚本
-================================
-功能：
-  1. 爬取 haowallpaper.com 的列表页（homeView / mobileView），遍历全部页，
-     收集所有壁纸条目（含详情字段：标题/分类/分辨率/色系/大小/下载量/收藏量/发布时间/标签/视频/海报）。
-  2. 下载每一张壁纸的海报图（png）到 downloads/posters/。
-  3. 可选：下载对应视频（mp4）到 downloads/videos/（--with-video）。
-  4. 输出结构化数据 downloads/data/wallpapers.json，供 clone 网站 /api/wallpapers.json 使用。
-
-说明：
-  - 目标站为 Nuxt SPA，详情正文是加密 Nuxt payload，直接抓取列表页里的
-    <video> 卡片 + 详情链接即可得到 海报/视频/标题/分类 等关键信息。
-  - 默认只下载「海报图」（轻量、可预览）；加 --with-video 才会下载体积较大的 mp4。
+哲风壁纸 clone —— 全站采集脚本（边采边存 checkpoint + 断点续传）
+===================================================================
+设计要点：
+  * 列表页逐页抓取，**每采一页立即 append 到 downloads/checkpoint/<source>.jsonl**。
+    任何时刻崩溃 / 中断，重跑都会从 checkpoint 里已完成的页接着来，
+    既不会丢已采数据，也不重复下载已存在的海报。
+  * 文件级去重：downloads/posters/<source>/<safe_title>_<urlbasename>.png，
+    已存在的直接复用（不重下）。
+  * 海报名里的 Windows 路径非法字符（/ \\ : * ? " < > |）会被替换成下划线，
+    避免 write_bytes 因“子目录不存在”而 FileNotFoundError。
 
 用法：
-  python scripts/scrape.py --max-pages 3            # 快速试跑 3 页
-  python scripts/scrape.py --max-pages 60            # 全量（电脑壁纸）
-  python scripts/scrape.py --max-pages 60 --with-video   # 连视频一起
+  python scripts/scrape.py --listers homeView --max-pages 0 --resume --workers 8
+  python scripts/scrape.py --listers homeView,mobileView --max-pages 3     # 试跑 3 页
+  python scripts/scrape.py --listers homeView --with-video                 # 连视频一起下
+
+说明：
+  - 目标站（Nuxt SPA）列表页把每页 12 张卡片序列化在
+    <script type="application/ld+json"> 的 CollectionPage → ItemList 里
+    （url / name / image 海报）。据此枚举全部页，?page=N 翻页。
+  - homeView（电脑壁纸）实测共 4760 页 ≈ 5.7 万张海报。
+  - 默认只下**海报图**（轻量、可预览）；--with-video 才下 mp4。
+  - 可选 --fill-details 抓详情页明文正文补全 分类/分辨率/色系/大小/下载量/收藏量/标签。
 """
 import argparse, json, os, re, sys, time, random
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import urllib.request
 
@@ -29,14 +34,14 @@ OUT = ROOT / "downloads"
 POSTERS = OUT / "posters"
 VIDEOS = OUT / "videos"
 DATA = OUT / "data"
+CHECKPOINT = OUT / "checkpoint"
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 BASE = "https://haowallpaper.com"
 
-# 列表页 -> 详情前缀
 LISTERS = {
     "homeView": "/homeViewLook/",     # 电脑壁纸
-    "mobileView": "/mobileViewLook/",  # 手机壁纸
+    "mobileView": "/mobileViewLook/", # 手机壁纸
 }
 
 
@@ -55,20 +60,8 @@ def http_get(url, timeout=30, retries=3):
 
 
 def parse_listing(html):
-    """从列表页解析出该页的壁纸卡片。
-    目标站（Nuxt SPA）把每一页的 12 张卡片序列化在 JSON-LD 里：
-        <script type="application/ld+json">
-          {"@type":"CollectionPage","mainEntity":{"@type":"ItemList",
-            "numberOfItems":12,
-            "itemListElement":[
-              {"position":1,"url":".../homeViewLook/ID","name":"标题","image":"海报"}, ...
-            ]}}
-        </script>
-    这是列表页里最完整、最稳定的数据来源（静态 <video> 只有前几张）。
-    详情字段（分辨率/色系/大小/下载量/收藏量/发布时间/标签）在详情页
-    的明文（非加密）正文中，可用 fetch_detail_fields 补全。"""
+    """从列表页 JSON-LD 的 CollectionPage → ItemList 解析该页卡片。"""
     items = []
-    # 逐块解析所有 JSON-LD，找到 ItemList
     for block in re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S):
         block = block.strip()
         try:
@@ -84,29 +77,18 @@ def parse_listing(html):
                 "url": url,
                 "title": (li.get("name") or "").split("「哲风壁纸」")[0].strip() or "未命名壁纸",
                 "poster": li.get("image", ""),
-                "video": "",          # 详情页才有的 mp4，由 fetch_detail_fields 填充
-                "category": "",       # 详情页才有的分类
-                "resolution": "",
-                "colorTone": "",
-                "size": "",
-                "downloads": 0,
-                "favorites": 0,
-                "publishDate": "",
-                "tags": [],
+                "video": "", "category": "", "resolution": "", "colorTone": "",
+                "size": "", "downloads": 0, "favorites": 0, "publishDate": "", "tags": [],
             })
     return items
 
 
 def fetch_detail_fields(url, timeout=25):
-    """抓详情页，补全 video / category / 各项元数据。失败返回 {} 不影响流程。
-    目标站详情页正文是明文，关键文本形如：
-        分类：动漫｜二次元、分辨率：「3840x2160」、色系：灰/白、大小：28.85 MB、发布人：∞、发布时间：2025-09-13
-    （注意 分类 与 分辨率 之间用全角竖线 ｜ 连接，需用字符类而非 [^\\s<]）"""
+    """抓详情页，补全 video / category / 各项元数据。失败返回 {} 不影响流程。"""
     html = http_get(url, timeout=timeout)
     if not html:
         return {}
     text = html.decode("utf-8", "ignore")
-    # 去掉标签，保留纯文本（全角竖线 ｜ 是正文的一部分，保留）
     plain = re.sub(r'<[^>]+>', ' ', text)
     plain = re.sub(r'\s+', ' ', plain)
 
@@ -122,42 +104,31 @@ def fetch_detail_fields(url, timeout=25):
     fav  = grab("收藏量", r"(\d+)")
     date = grab("发布时间", r"(\d{4}-\d{2}-\d{2})")
 
-    # 相关标签：正文里“相关标签”后面是一段空格分隔的词，随后是“相关收藏”。
-    # 提取该区间内的 2~10 字中文词作为标签。
     tags = []
-    ti = plain.find("相关标签")
-    te = plain.find("相关收藏")
+    ti = plain.find("相关标签"); te = plain.find("相关收藏")
     if ti != -1 and te != -1 and te > ti:
         seg = plain[ti + 4: te]
         tags = [t for t in re.findall(r'[\u4e00-\u9fa5A-Za-z0-9]{1,12}', seg) if 1 <= len(t) <= 12][:12]
 
-    # 主视频 src / poster（取第一个 <video>）
     vm = re.search(r'<video[^>]*?src="([^"]+)"', text)
     pm = re.search(r'<video[^>]*?poster="([^"]+)"', text)
 
     return {
         "video": vm.group(1) if vm else "",
-        "category": cat,
-        "resolution": res,
-        "colorTone": col,
-        "size": size,
-        "downloads": int(dl or 0),
-        "favorites": int(fav or 0),
-        "publishDate": date,
-        "tags": tags,
+        "category": cat, "resolution": res, "colorTone": col, "size": size,
+        "downloads": int(dl or 0), "favorites": int(fav or 0),
+        "publishDate": date, "tags": tags,
         "poster": pm.group(1) if pm else "",
     }
 
 
 def fetch_listing_page(lister, page, max_pages):
-    """抓取一个列表页，返回该页 items 与是否还有下一页。"""
+    """抓一个列表页，返回 (该页 items, 是否还有下一页)。"""
     url = f"{BASE}/{lister}?page={page}"
     html = http_get(url)
     if not html:
         return [], False
-    text = html.decode("utf-8", "ignore")
-    items = parse_listing(text)
-    # 终止条件：本页没有新条目 或 页数到达上限
+    items = parse_listing(html.decode("utf-8", "ignore"))
     has_more = page < max_pages and bool(items)
     return items, has_more
 
@@ -168,11 +139,25 @@ def slugify(s):
     return s or "unknown"
 
 
+def _safe_prefix(title):
+    """把标题转成安全文件名片段：去掉 OS 非法字符（/\\:*?\"<>|），保留中文。"""
+    s = re.sub(r'[\\/:*?"<>|]', '_', title or "")
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s[:30]
+
+
+def poster_dest(it):
+    """海报落盘路径：downloads/posters/<source>/<safe_title>_<urlbasename>.png"""
+    dest_dir = POSTERS / slugify(it.get("source", "homeView"))
+    fname = _safe_prefix(it.get("title", "")) + "_" + os.path.basename(it.get("poster", ""))
+    return dest_dir, dest_dir / fname
+
+
 def download_asset(url, dest_dir, prefix):
     if not url:
         return None
     dest_dir.mkdir(parents=True, exist_ok=True)
-    name = prefix + "_" + url.rsplit("/", 1)[-1]
+    name = _safe_prefix(prefix) + "_" + url.rsplit("/", 1)[-1]
     dest = dest_dir / name
     if dest.exists() and dest.stat().st_size > 0:
         return str(dest)
@@ -185,114 +170,136 @@ def download_asset(url, dest_dir, prefix):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--max-pages", type=int, default=5, help="每个列表页最多抓取多少页（设 0 表示抓到没有为止）")
+    ap.add_argument("--max-pages", type=int, default=5, help="每个列表页最多抓取多少页（0=抓到没有为止）")
     ap.add_argument("--with-video", action="store_true", help="同时下载 mp4 视频（体积大）")
     ap.add_argument("--listers", default="homeView,mobileView", help="逗号分隔的列表页")
     ap.add_argument("--workers", type=int, default=4, help="并发下载线程数")
     ap.add_argument("--fill-details", action="store_true",
-                    help="额外抓取每个壁纸的详情页，补全 分类/分辨率/色系/大小/下载量/收藏量/标签（较慢）")
+                    help="额外抓详情页补全 分类/分辨率/色系/大小/下载量/收藏量/标签（较慢）")
     ap.add_argument("--resume", action="store_true",
-                    help="断点续传：跳过 downloads/posters/ 中已存在的海报，继续补全")
+                    help="断点续传：从 checkpoint 接着采 + 跳过已下载的海报")
     args = ap.parse_args()
 
     listers = [l.strip() for l in args.listers.split(",") if l.strip()]
-    OUT.mkdir(parents=True, exist_ok=True)
-    POSTERS.mkdir(exist_ok=True)
+    for d in (OUT, POSTERS, CHECKPOINT, DATA):
+        d.mkdir(parents=True, exist_ok=True)
 
-    # 已下载海报（用于断点续传）
-    downloaded = set()
-    if args.resume:
-        for p in POSTERS.rglob("*.png"):
-            downloaded.add(p.name)
-        print(f">>> 断点续传：已存在 {len(downloaded)} 张海报，跳过之")
+    # ---------- checkpoint：每个 source 一个 jsonl，每行一条 item ----------
+    def ck(lister):
+        return CHECKPOINT / f"{lister}.jsonl"
 
-    all_items = []
-    seen = set()
+    def load_ckpt(lister):
+        p = ck(lister)
+        out = []
+        if p.exists():
+            for line in p.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        out.append(json.loads(line))
+                    except Exception:
+                        pass
+        return out
+
+    # 已完成的页码（从 checkpoint 各 item 的 _page 推算最大页）
+    done_pages = {}
     for lister in listers:
-        print(f"\n===== 列表页 {lister} 开始 =====")
-        page = 1
-        stop = False
-        while not stop:
-            # 达到页数上限（--max-pages>0 时）
+        existing = load_ckpt(lister)
+        done_pages[lister] = max([it.get("_page", 0) for it in existing], default=0)
+        if existing:
+            print(f">>> checkpoint: {lister} 已有 {len(existing)} 条，从 p{done_pages[lister]} 继续")
+
+    # ---------- 逐页抓取 + 即时写 checkpoint（可中断恢复）----------
+    for lister in listers:
+        start = done_pages[lister] + 1
+        print(f"\n===== 列表页 {lister} 从 p{start} 开始 =====")
+        page = start
+        while True:
             if args.max_pages and page > args.max_pages:
                 break
             items, has_more = fetch_listing_page(lister, page, args.max_pages or 10**9)
-            new = 0
-            for it in items:
-                it["source"] = lister
-                key = it["video"] or it["poster"]
-                if key not in seen:
-                    seen.add(key)
-                    base = os.path.basename(it["poster"])
-                    if base in downloaded:
-                        # 断点续传：海报已存在，补 localPoster 指向已有文件
-                        it["localPoster"] = f"downloads/posters/{slugify(lister)}/{base}"
-                        all_items.append(it)
-                        continue
-                    all_items.append(it)
-                    new += 1
-            print(f"  {lister} p{page}: 本页 {len(items)} 条, 新增 {new}", end="", flush=True)
-            # 终止条件：本页 0 条（目标站没有更多）
-            if not items:
-                print("  <- 已到末尾")
-                stop = True
-            elif not has_more:
-                stop = True
+            if items:
+                with ck(lister).open("a", encoding="utf-8") as f:
+                    for it in items:
+                        it["source"] = lister
+                        it["_page"] = page
+                        f.write(json.dumps(it, ensure_ascii=False) + "\n")
+                print(f"  p{page}: 本页 {len(items)} 条 -> checkpoint", flush=True)
+            else:
+                print(f"  p{page}: 0 条，已到末尾", flush=True)
+            if not items or not has_more:
+                break
             page += 1
-            time.sleep(0.25 + random.random() * 0.4)  # 礼貌限速
+            time.sleep(0.2 + random.random() * 0.35)  # 礼貌限速
 
-    print(f"\n===== 共收集 {len(all_items)} 条壁纸 =====")
+    # ---------- 汇总 checkpoint（去重）----------
+    print("\n===== 汇总 checkpoint =====")
+    all_items, seen = [], set()
+    for lister in listers:
+        for line in ck(lister).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            it = json.loads(line)
+            key = it.get("video") or it.get("poster")
+            if key and key not in seen:
+                seen.add(key)
+                all_items.append(it)
+    print(f"共 {len(all_items)} 条（去重后）")
 
-    # 可选：抓取详情页补全元数据
+    # ---------- 可选：抓详情补全 ----------
     if args.fill_details:
-        print(f"\n>>> 正在抓取 {len(all_items)} 个详情页补全元数据 ...")
-        for idx, it in enumerate(all_items, 1):
-            fields = fetch_detail_fields(it["url"])
-            # 详情页的 video/poster 更权威，覆盖之
-            it["video"] = fields.get("video") or it.get("video", "")
-            if fields.get("poster"):
-                it["poster"] = fields["poster"]
+        need = [it for it in all_items if not it.get("resolution")]
+        print(f"\n>>> 抓取 {len(need)} 个详情页补全元数据 ...")
+        for i, it in enumerate(need, 1):
+            f = fetch_detail_fields(it["url"])
+            if f.get("poster"):
+                it["poster"] = f["poster"]
+            it["video"] = f.get("video") or it.get("video", "")
             for k in ["category", "resolution", "colorTone", "size",
                       "downloads", "favorites", "publishDate", "tags"]:
-                if fields.get(k):
-                    it[k] = fields[k]
-            if idx % 20 == 0 or idx == len(all_items):
-                print(f"    详情 {idx}/{len(all_items)} 完成")
-            time.sleep(0.15)
+                if f.get(k):
+                    it[k] = f[k]
+            if i % 30 == 0:
+                print(f"    详情 {i}/{len(need)}")
+            time.sleep(0.12)
 
-    # 下载海报（并发，断点续传时跳过已存在的）
-    def _dl_poster(it):
-        base = os.path.basename(it["poster"])
-        if args.resume and base in downloaded:
-            it["localPoster"] = f"downloads/posters/{slugify(it['source'])}/{base}"
-            return True
-
+    # ---------- 下载海报（文件级去重，已存在的复用）----------
+    print("\n>>> 下载海报 ...")
+    def _dl(it):
+        dest_dir, dest = poster_dest(it)
+        if dest.exists() and dest.stat().st_size > 0:
+            it["localPoster"] = os.path.relpath(dest, ROOT)
+            return str(dest)
+        d = download_asset(it.get("poster"), dest_dir, it.get("title", ""))
+        it["localPoster"] = os.path.relpath(d, ROOT) if d else ""
+        return d
     ok = 0
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        for r in ex.map(_dl_poster, all_items):
+        for r in ex.map(_dl, all_items):
             if r:
                 ok += 1
-    print(f"海报下载成功 {ok}/{len(all_items)}")
+    print(f"海报 {ok}/{len(all_items)}")
 
-    # 可选：下载视频
+    # ---------- 可选：下载视频 ----------
     if args.with_video:
-        def _dl_video(it):
-            dest_dir = VIDEOS / slugify(it["source"])
-            d = download_asset(it["video"], dest_dir, it["title"][:30])
+        print("\n>>> 下载视频 ...")
+        def _dv(it):
+            d = download_asset(it.get("video"), VIDEOS / slugify(it.get("source", "homeView")), _safe_prefix(it.get("title", "")))
             it["localVideo"] = os.path.relpath(d, ROOT) if d else ""
             return d
         with ThreadPoolExecutor(max_workers=max(2, args.workers // 2)) as ex:
-            list(ex.map(_dl_video, all_items))
-        print(f"视频下载成功 {sum(1 for i in all_items if i.get('localVideo'))}/{len(all_items)}")
+            list(ex.map(_dv, all_items))
+        print(f"视频 {sum(1 for i in all_items if i.get('localVideo'))}/{len(all_items)}")
 
-    # 输出 JSON（清理内部字段）
+    # ---------- 输出最终 JSON ----------
     for it in all_items:
+        it.pop("_page", None)
         it.pop("_poster_path", None)
-    DATA.mkdir(exist_ok=True)
-    data_file = DATA / "wallpapers.json"
-    data_file.write_text(json.dumps(all_items, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n数据已写入 {data_file}  ({len(all_items)} 条)")
-    print("提示：把 downloads/data/wallpapers.json 复制到 website/api/wallpapers.json 即可驱动 clone 网站")
+    out = DATA / "wallpapers.json"
+    out.write_text(json.dumps(all_items, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n数据写入 {out}  ({len(all_items)} 条)")
+    print("提示：python scripts/sync_site.py 同步进 website/，再刷新 http://127.0.0.1:8091/")
 
 
 if __name__ == "__main__":
