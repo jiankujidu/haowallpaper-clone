@@ -184,6 +184,24 @@ def main():
     for d in (OUT, POSTERS, CHECKPOINT, DATA):
         d.mkdir(parents=True, exist_ok=True)
 
+    # ---------- 文件锁：防止多进程同时写同一 checkpoint ----------
+    lock_path = CHECKPOINT / f"lock.{listers[0]}"
+    lock_file = open(lock_path, "a+", encoding="utf-8")
+    try:
+        import fcntl
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except ImportError:
+        # Windows：msvcrt，使用非阻塞加锁
+        import msvcrt
+        try:
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            print("!!! 已有采集进程在运行，退出以避免数据冲突。")
+            sys.exit(1)
+    except OSError:
+        print("!!! 锁被占用（已有进程在跑），退出。")
+        sys.exit(1)
+
     # ---------- checkpoint：每个 source 一个 jsonl，每行一条 item ----------
     def ck(lister):
         return CHECKPOINT / f"{lister}.jsonl"
