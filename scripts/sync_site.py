@@ -21,17 +21,26 @@ DST_POSTERS = ROOT / "website" / "posters"
 
 
 def sync_posters(data, copied_set):
-    """把 downloads/posters 下对应的海报拷到 website/posters（保持 <source>/<file> 结构）。"""
+    """把 downloads/posters 下对应的海报拷到 website/posters（保持 <source>/<file> 结构）。
+    优先用数据里的 localPoster 字段（scrape.py 生成，匹配磁盘真实文件名），
+    缺失时按 <source>/<poster的basename> 兜底。"""
     copied = 0
     for it in data:
-        source = it.get("source", "homeView")
-        base = os.path.basename(it.get("poster", ""))
-        if not base:
-            continue
-        rel = f"{source}/{base}"
+        rel = None
+        if it.get("localPoster"):
+            norm = it["localPoster"].replace("\\", "/")
+            idx = norm.find("posters/")
+            if idx != -1:
+                rel = norm[idx + len("posters/"):].lstrip("/")
+        if not rel:
+            source = it.get("source", "homeView")
+            base = os.path.basename(it.get("poster", ""))
+            if not base:
+                continue
+            rel = f"{source}/{base}"
         if rel in copied_set:
             continue
-        src = ROOT / "downloads" / "posters" / rel
+        src = ROOT / "downloads" / rel
         if not src.exists():
             continue
         dst = DST_POSTERS / rel
