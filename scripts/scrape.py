@@ -185,37 +185,61 @@ def download_asset(url, dest_dir, prefix):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--max-pages", type=int, default=5, help="每个列表页最多抓取多少页")
+    ap.add_argument("--max-pages", type=int, default=5, help="每个列表页最多抓取多少页（设 0 表示抓到没有为止）")
     ap.add_argument("--with-video", action="store_true", help="同时下载 mp4 视频（体积大）")
     ap.add_argument("--listers", default="homeView,mobileView", help="逗号分隔的列表页")
     ap.add_argument("--workers", type=int, default=4, help="并发下载线程数")
     ap.add_argument("--fill-details", action="store_true",
                     help="额外抓取每个壁纸的详情页，补全 分类/分辨率/色系/大小/下载量/收藏量/标签（较慢）")
+    ap.add_argument("--resume", action="store_true",
+                    help="断点续传：跳过 downloads/posters/ 中已存在的海报，继续补全")
     args = ap.parse_args()
 
     listers = [l.strip() for l in args.listers.split(",") if l.strip()]
     OUT.mkdir(parents=True, exist_ok=True)
     POSTERS.mkdir(exist_ok=True)
 
+    # 已下载海报（用于断点续传）
+    downloaded = set()
+    if args.resume:
+        for p in POSTERS.rglob("*.png"):
+            downloaded.add(p.name)
+        print(f">>> 断点续传：已存在 {len(downloaded)} 张海报，跳过之")
+
     all_items = []
     seen = set()
     for lister in listers:
         print(f"\n===== 列表页 {lister} 开始 =====")
-        for page in range(1, args.max_pages + 1):
-            items, has_more = fetch_listing_page(lister, page, args.max_pages)
+        page = 1
+        stop = False
+        while not stop:
+            # 达到页数上限（--max-pages>0 时）
+            if args.max_pages and page > args.max_pages:
+                break
+            items, has_more = fetch_listing_page(lister, page, args.max_pages or 10**9)
             new = 0
             for it in items:
                 it["source"] = lister
                 key = it["video"] or it["poster"]
                 if key not in seen:
                     seen.add(key)
-                    it["_poster_path"] = f"posters/{slugify(lister)}_{page}_{new+1:02d}_{os.path.basename(it['poster'])}"
+                    base = os.path.basename(it["poster"])
+                    if base in downloaded:
+                        # 断点续传：海报已存在，补 localPoster 指向已有文件
+                        it["localPoster"] = f"downloads/posters/{slugify(lister)}/{base}"
+                        all_items.append(it)
+                        continue
                     all_items.append(it)
                     new += 1
-            print(f"  {lister} p{page}: 本页 {len(items)} 条, 新增 {new}")
-            if not has_more:
-                break
-            time.sleep(0.4 + random.random() * 0.6)  # 礼貌限速
+            print(f"  {lister} p{page}: 本页 {len(items)} 条, 新增 {new}", end="", flush=True)
+            # 终止条件：本页 0 条（目标站没有更多）
+            if not items:
+                print("  <- 已到末尾")
+                stop = True
+            elif not has_more:
+                stop = True
+            page += 1
+            time.sleep(0.25 + random.random() * 0.4)  # 礼貌限速
 
     print(f"\n===== 共收集 {len(all_items)} 条壁纸 =====")
 
@@ -236,17 +260,19 @@ def main():
                 print(f"    详情 {idx}/{len(all_items)} 完成")
             time.sleep(0.15)
 
-    # 下载海报（并发）
+    # 下载海报（并发，断点续传时跳过已存在的）
     def _dl_poster(it):
-        dest_dir = POSTERS / slugify(it["source"])
-        d = download_asset(it["poster"], dest_dir, it["title"][:30])
-        it["localPoster"] = os.path.relpath(d, ROOT) if d else ""
-        return d
+        base = os.path.basename(it["poster"])
+        if args.resume and base in downloaded:
+            it["localPoster"] = f"downloads/posters/{slugify(it['source'])}/{base}"
+            return True
 
+    ok = 0
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        list(ex.map(_dl_poster, all_items))
-    ok_poster = sum(1 for i in all_items if i["localPoster"])
-    print(f"海报下载成功 {ok_poster}/{len(all_items)}")
+        for r in ex.map(_dl_poster, all_items):
+            if r:
+                ok += 1
+    print(f"海报下载成功 {ok}/{len(all_items)}")
 
     # 可选：下载视频
     if args.with_video:
