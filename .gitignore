@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 临时抓取 HTML（可随时由 scripts/scrape.py 重新生成）
+*.html
+
+# 下载的大体积媒体（海报/视频）——用 LFS 或对象存储，不进普通 git 历史
+# 如需提交海报可去掉下面这行
+downloads/posters/
+downloads/videos/
+
+# 系统
+.DS_Store
+Thumbs.db
