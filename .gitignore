@@ -15,8 +15,8 @@ Thumbs.db
 downloads/scrape_full.log
 .workbuddy/
 
-# 本地采集的海报资产（体积大，不进 git；将来有远程 + git-lfs 后取消下行忽略）
-downloads/posters/
+# 视频资产未采集，忽略；海报已按用户要求直接进 git
 downloads/videos/
+# website/posters 是 downloads/posters 的同步副本，避免重复占体积
 website/posters/
 website/preview.log
