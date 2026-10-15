@@ -6,24 +6,31 @@
 const BASE = '';               // 同源；若跨域改成 'http://host:port'
 const PER_PAGE = 12;           // 与目标站一致
 
-const state = {
-  all: [],          // 当前筛选后的全部数据
-  page: 1,
-  detail: null,
-};
-
 /* ---------- 数据加载 ---------- */
 async function loadAll() {
-  const res = await fetch(BASE + '/api/wallpapers.json');
-  if (!res.ok) throw new Error('数据加载失败: ' + res.status);
-  const data = await res.json();
+  // 优先读本地/同源的 /api/wallpapers.json；不存在时回退到 .gz 压缩版（GitHub Pages 静态场景）
+  let data = null;
+  try {
+    const res = await fetch(BASE + '/api/wallpapers.json');
+    if (res.ok) data = await res.json();
+  } catch (e) {}
+  if (!data) {
+    const gzRes = await fetch(BASE + '/api/wallpapers.json.gz');
+    if (!gzRes.ok) throw new Error('数据加载失败：wallpapers.json / .gz 均不可用');
+    // 浏览器原生 DecompressionStream 解压 gzip
+    const buf = await gzRes.arrayBuffer();
+    const ds = new DecompressionStream('gzip');
+    const stream = new Response(buf).body.pipeThrough(ds);
+    const text = await new Response(stream).text();
+    data = JSON.parse(text);
+  }
   state.all = data;
   applyFilters();
 }
 
-// 本地海报路径：优先用数据里的 localPoster（scrape.py 生成的，匹配磁盘真实文件名），缺失时回退远端 URL
+// 本地海报路径：优先用数据里的 localPoster（scrape.py 生成的，匹配磁盘真实文件名），
+// GitHub Pages 无本地海报时自动回退远端 URL
 function localPoster(w) {
-  // localPoster 形如 "downloads\posters\homeView\xxx.png"，取 posters/ 之后的部分作为网站相对路径
   if (w.localPoster) {
     const norm = w.localPoster.replace(/\\/g, '/');
     const idx = norm.indexOf('posters/');
