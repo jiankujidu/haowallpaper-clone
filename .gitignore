@@ -20,3 +20,6 @@ downloads/videos/
 # website/posters 是 downloads/posters 的同步副本，避免重复占体积
 website/posters/
 website/preview.log
+
+# GitHub Pages 站点入口（例外：根目录 index.html 需要进 git）
+!index.html
