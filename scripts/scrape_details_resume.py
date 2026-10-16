@@ -136,40 +136,123 @@ def fetch_one(wtId):
     return rec
 
 
+def http_get(url, timeout=20, retries=4):
+    global _fail_streak
+    for i in range(retries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": "https://haowallpaper.com/"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", "ignore")
+        except Exception as e:
+            if i == retries - 1:
+                return None
+            err_code = getattr(e, "code", 0)
+            if err_code in (502, 503):
+                wait = min(2 * (2 ** i), 15)
+                time.sleep(wait)
+            else:
+                time.sleep(1.5 + i)
+    return None
+
+
+def probe_site():
+    """快速探测站点是否恢复（用已知 ok 的 id 测试，超时 5s）。"""
+    global _fail_streak
+    if not _done:
+        return False
+    sample = next(iter(_done))
+    try:
+        req = urllib.request.Request(
+            DETAIL_URL.format(wtid=sample),
+            headers={"User-Agent": UA, "Referer": "https://haowallpaper.com/"})
+        html = urllib.request.urlopen(req, timeout=8).read()
+        if len(html) > 1000:
+            with _streak_lock:
+                _fail_streak = 0
+            print(f"[probe] 站点恢复 ✓ ({len(html)} B)")
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def main_loop(args, batch_size=5000):
+    """外层循环：每批采 batch_size 个，全批 502 时进入探测等待。"""
+    while True:
+        load_done()
+        todo = load_todo()
+        if not todo:
+            print("全部采完了，退出")
+            return
+        print(f"\n=== 新一批: {len(todo)} 个待采 ===")
+        batch = todo[:batch_size]
+        done = ok = 0
+        t0 = time.time()
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            futs = [ex.submit(fetch_one, i) for i in batch]
+            for fu in as_completed(futs):
+                rec = fu.result()
+                done += 1
+                if rec.get("ok"):
+                    ok += 1
+                if done % 100 == 0:
+                    elapsed = time.time() - t0
+                    print(f"  {done}/{len(batch)}  ok={ok}  速率={done/elapsed:.1f}/s  "
+                          f"累计ok={len(_done)}")
+        print(f"本批完成: {done} 成功 {ok} / 失败 {done-ok}，用时 {time.time()-t0:.0f}s")
+        # 全批失败 → 站点挂，进入探测等待
+        if ok == 0:
+            print("全批失败（502 持续），进入探测模式，每 60s 探测一次...")
+            while True:
+                time.sleep(60)
+                if probe_site():
+                    print("站点已恢复，继续下一批")
+                    break
+        # 有进展则继续下一批
+        load_done()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--limit", type=int, default=0, help="本次最多采多少个（0=全量）")
+    ap.add_argument("--batch", type=int, default=5000, help="每批最多采多少个")
+    ap.add_argument("--oneloop", action="store_true", help="只跑一批（不循环探测）")
     args = ap.parse_args()
 
     CKPT.parent.mkdir(parents=True, exist_ok=True)
     if not CKPT.exists():
         CKPT.touch()
     load_done()
-    todo = load_todo()
+
     if args.limit:
-        todo = todo[:args.limit]
-        print(f"本次试跑: {len(todo)}")
-    if not todo:
-        print("全部采完了，退出")
+        # 试跑模式：只采指定数量
+        todo = load_todo()
+        if args.limit:
+            todo = todo[:args.limit]
+            print(f"本次试跑: {len(todo)}")
+        if not todo:
+            print("全部采完了，退出")
+            return
+        done = ok = 0
+        t0 = time.time()
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            futs = [ex.submit(fetch_one, i) for i in todo]
+            for fu in as_completed(futs):
+                rec = fu.result()
+                done += 1
+                if rec.get("ok"):
+                    ok += 1
+                if done % 100 == 0:
+                    elapsed = time.time() - t0
+                    print(f"  {done}/{len(todo)}  ok={ok}  速率={done/elapsed:.1f}/s  "
+                          f"累计ok={len(_done)}")
+        print(f"\n本批完成: {done} 成功 {ok} / 失败 {done-ok}，用时 {time.time()-t0:.0f}s")
+        print(f"累计 details: {len(_done)}")
         return
 
-    done = ok = 0
-    t0 = time.time()
-    with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        futs = [ex.submit(fetch_one, i) for i in todo]
-        for fu in as_completed(futs):
-            rec = fu.result()
-            done += 1
-            if rec.get("ok"):
-                ok += 1
-            if done % 100 == 0:
-                elapsed = time.time() - t0
-                print(f"  {done}/{len(todo)}  ok={ok}  速率={done/elapsed:.1f}/s  "
-                      f"累计ok={len(_done)}  预计剩余={(len(todo)-done)/max(done/elapsed,0.1):.0f}s")
-
-    print(f"\n本批完成: {done} 成功 {ok} / 失败 {done-ok}，用时 {time.time()-t0:.0f}s")
-    print(f"累计 details: {len(_done)}")
+    # 全量循环模式
+    main_loop(args, batch_size=args.batch)
 
 
 if __name__ == "__main__":
