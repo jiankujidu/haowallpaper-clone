@@ -7,7 +7,7 @@
  * 列表 / 详情 / 搜索 / 筛选 / 分页
  */
 
-const BASE = '';               // 同源；若跨域改成 'http://host:port'
+const BASE = '';               // 同源；若跨域改成 'http://host:port'（数据路径为相对路径，兼容 Pages 项目子路径）
 const PER_PAGE = 12;           // 与目标站一致
 
 const state = { all: [], filteredList: [], page: 1, detail: null };
@@ -50,10 +50,11 @@ async function fetchGzipJson(url) {
 
 async function loadAll() {
   showLoading('壁纸数据加载中…');
+  // 注意：相对路径（不带前导 /），适配 GitHub Pages 项目子路径 /haowallpaper-clone/
   const loaders = [
-    () => fetchJson(BASE + '/api/wallpapers.json'),
-    () => fetchGzipJson(BASE + '/api/wallpapers.json.gz'),
-    () => fetchJson(BASE + '/downloads/data/wallpapers.json'),
+    () => fetchJson(BASE + 'api/wallpapers.json'),
+    () => fetchGzipJson(BASE + 'api/wallpapers.json.gz'),
+    () => fetchJson(BASE + 'downloads/data/wallpapers.json'),
   ];
   let data = null, lastErr = null;
   for (const load of loaders) {
