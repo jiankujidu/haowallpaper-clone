@@ -7,7 +7,6 @@
   <meta name="description" content="哲风壁纸 —— 4K 电脑动态壁纸与高清静态壁纸，覆盖动漫、二次元、治愈、夏日等分类。">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23274ec5'/><text x='16' y='22' font-size='18' text-anchor='middle' fill='white'>哲</text></svg>">
   <link rel="stylesheet" href="css/style.css">
-  <link rel="preconnect" href="https://img.haowallpaper.com">
 </head>
 <body class="darkBody">
   <!-- 顶栏 -->
@@ -42,15 +41,10 @@
     </div>
   </header>
 
-  <!-- 用户条 -->
-  <div class="userbar">
-    <span class="avatar"></span>
-    <span class="uname">登录后获取名称和头像</span>
-    <span class="stat">下载：0</span>
-    <span class="stat">收藏：0</span>
-  </div>
-
   <main class="main">
+    <!-- 加载提示（数据就绪后自动隐藏） -->
+    <div id="loadTip" class="load-tip"><span class="spinner"></span><span>壁纸数据加载中…</span></div>
+
     <!-- 分类筛选 + 搜索 -->
     <section class="toolbar">
       <div class="cat-tabs" id="catTabs">
@@ -76,8 +70,8 @@
         <button class="back-btn" id="backBtn">← 返回列表</button>
         <div class="detail-shell">
           <div class="detail-media">
-            <video id="detailVideo" loop muted playsinline></video>
-            <div class="media-poster"></div>
+            <img id="detailImg" alt="">
+            <video id="detailVideo" loop muted playsinline hidden></video>
           </div>
           <div class="detail-info">
             <h1 id="dTitle">壁纸</h1>

@@ -65,19 +65,11 @@ button{font-family:inherit;cursor:pointer}
 }
 .ghost-btn:hover{color:var(--text);border-color:var(--text-2)}
 
-/* ===== 用户条 ===== */
-.userbar{
-  max-width:1560px;margin:0 auto;padding:10px 24px;
-  display:flex;align-items:center;gap:12px;color:var(--text-2);font-size:13px;
-}
 .avatar{
   width:30px;height:30px;border-radius:50%;
   background:linear-gradient(135deg,#334,#556);
   display:inline-block;
 }
-.uname{color:var(--text)}
-.stat{color:var(--muted)}
-
 /* ===== 主体 ===== */
 .main{max-width:1560px;margin:0 auto;padding:6px 24px 60px}
 
@@ -150,8 +142,7 @@ button{font-family:inherit;cursor:pointer}
   position:relative;border-radius:var(--radius);overflow:hidden;
   background:#000;aspect-ratio:16/9;border:1px solid var(--border);
 }
-.detail-media video{width:100%;height:100%;object-fit:cover}
-.media-poster{position:absolute;inset:0;background:#000}
+.detail-media img,.detail-media video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .detail-info h1{font-size:22px;margin:0 0 16px;line-height:1.4}
 .meta{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:13px;color:var(--text-2);
   padding:14px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:16px}
@@ -199,6 +190,15 @@ button{font-family:inherit;cursor:pointer}
 
 /* ===== 空状态 ===== */
 .empty{text-align:center;padding:80px 0;color:var(--muted)}
+
+/* ===== 加载提示 ===== */
+.load-tip{display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:48px 0;color:var(--text-2);font-size:13px}
+.load-tip.load-error{color:var(--danger);flex-wrap:wrap}
+.spinner{width:18px;height:18px;flex:0 0 auto;border-radius:50%;
+  border:2px solid var(--border);border-top-color:var(--accent);
+  animation:spin .8s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* ===== 响应式 ===== */
 @media(max-width:900px){
