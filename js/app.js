@@ -10,7 +10,14 @@
 const BASE = '';               // 同源；若跨域改成 'http://host:port'（数据路径为相对路径，兼容 Pages 项目子路径）
 const PER_PAGE = 12;           // 与目标站一致
 
-const state = { all: [], filteredList: [], page: 1, detail: null };
+const state = {
+  all: [],
+  filteredList: [],
+  page: 1,
+  detail: null,
+  tone: '',            // 色系筛选
+  sort: 'default'      // default | dl | newest
+};
 
 /* ---------- 加载提示 ---------- */
 function showLoading(text) {
@@ -67,7 +74,31 @@ async function loadAll() {
   state.all = data;
   hideLoading();
   buildCatTabs();
+  buildToneTabs();
   applyFilters();
+}
+
+/* ---------- 色系 tab（取数量最多的前 8 个色系） ---------- */
+function buildToneTabs() {
+  const counts = new Map();
+  for (const w of state.all) {
+    const t = (w.colorTone || '').trim();
+    if (t && t !== 'undefined') counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const wrap = document.getElementById('toneTabs');
+  if (!wrap) return;
+  wrap.innerHTML = '<button class="tone-tab active" data-tone="">全部色系</button>' +
+    top.map(([t, n]) => `<button class="tone-tab" data-tone="${escapeHtml(t)}">${escapeHtml(t)} <i>${fmt(n)}</i></button>`).join('');
+  wrap.querySelectorAll('.tone-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      wrap.querySelectorAll('.tone-tab').forEach(x => x.classList.remove('active'));
+      btn.classList.add('active');
+      state.tone = btn.dataset.tone || '';
+      if (!document.getElementById('detail').classList.contains('hidden')) closeDetail();
+      applyFilters();
+    });
+  });
 }
 
 /* ---------- 海报路径（多级回退） ---------- */
@@ -134,11 +165,22 @@ function bindCatTabs() {
 function applyFilters() {
   const cat = document.querySelector('#catTabs .cat-tab.active')?.dataset.cat || '全部';
   const kw = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+  const tone = state.tone;
+  const sort = state.sort;
 
   let list = state.all;
   if (cat && cat !== '全部') list = list.filter(w => (w.category || '').trim() === cat);
+  if (tone) list = list.filter(w => (w.colorTone || '').trim() === tone);
   if (kw) list = list.filter(w =>
-    ((w.fullTitle || w.title || '') + ' ' + (w.tags || []).join(' ')).toLowerCase().includes(kw));
+    ((w.fullTitle || w.title || '') + ' ' + (w.tags || []).join(' ') + ' ' +
+     (w.category || '') + ' ' + (w.colorTone || '') + ' ' + (w.creator || ''))
+    .toLowerCase().includes(kw));
+
+  if (sort === 'dl') {
+    list = [...list].sort((a, b) => (b.downloadCount || b.downloads || 0) - (a.downloadCount || a.downloads || 0));
+  } else if (sort === 'newest') {
+    list = [...list].sort((a, b) => (b.publishDate || '').localeCompare(a.publishDate || ''));
+  }
 
   state.filteredList = list;
   state.page = 1;
@@ -173,17 +215,20 @@ function renderGrid() {
   grid.innerHTML = pageItems.map(w => {
     const urls = posterCandidates(w);
     const badge = w.mediaType === 'video' ? '<span class="card-vid">动</span>' : '';
+    const res = w.width ? `<span class="card-res">${w.width}×${w.height}</span>` : '';
+    const dl  = (w.downloadCount || w.downloads || 0) ? `<span class="card-dl">⬇ ${fmt(w.downloadCount || w.downloads)}</span>` : '';
     return `
     <div class="card" data-id="${w.id}">
       <div class="card-media">
         <img loading="lazy" src="${urls[0] || w.poster}" alt="${escapeHtml(w.title)}">
         ${badge}
-        <span class="card-badge">${escapeHtml((w.category || '').trim() || '壁纸')}</span>
+        <span class="card-badge">${escapeHtml((w.category || '').trim().split('｜')[0] || '壁纸')}</span>
+        <div class="card-hover-info">${res}${dl}</div>
       </div>
       <div class="card-title" title="${escapeHtml(w.fullTitle || w.title)}">${escapeHtml(w.title)}</div>
       <div class="card-sub">
-        <span class="cat">${escapeHtml((w.category || '').trim() || '')}</span>
-        <span class="dl">⬇ ${fmt(w.downloadCount || w.downloads)}</span>
+        <span class="cat">${escapeHtml((w.category || '').trim().split('｜')[0] || '')}</span>
+        <span class="tone">${escapeHtml(w.colorTone || '')}</span>
       </div>
     </div>`;
   }).join('');
@@ -237,11 +282,25 @@ function openDetail(id) {
   document.getElementById('dMeta').innerHTML = `
     <div>分类：<b>${escapeHtml((w.category || '').trim() || '—')}</b></div>
     <div>分辨率：<b>${w.width ? escapeHtml(w.width + '×' + w.height) : '—'}</b></div>
-    <div>色系：<b>${escapeHtml(w.colorTone || '—')}</b></div>
+    <div>色系：<b class="d-tone" ${w.colorTone ? `data-tone="${escapeHtml(w.colorTone)}"` : ''}>${escapeHtml(w.colorTone || '—')}</b></div>
     <div>大小：<b>${escapeHtml(w.fileSize || w.size || '—')}</b></div>
     <div>类型：<b>${w.mediaType === 'video' ? '动态壁纸' : '静态壁纸'}</b></div>
     <div>下载量：<b>${fmt(w.downloadCount || w.downloads)}</b></div>
     <div>发布时间：<b>${escapeHtml(w.publishDate || '—')}</b></div>`;
+  // 色系可点击 → 触发色系筛选
+  const dToneEl = document.querySelector('#dMeta .d-tone[data-tone]');
+  if (dToneEl) {
+    dToneEl.style.cursor = 'pointer';
+    dToneEl.title = '点击按此色系筛选';
+    dToneEl.addEventListener('click', () => {
+      const toneVal = dToneEl.dataset.tone;
+      state.tone = toneVal;
+      document.querySelectorAll('#toneTabs .tone-tab').forEach(x =>
+        x.classList.toggle('active', x.dataset.tone === toneVal));
+      if (document.getElementById('detail').classList.contains('hidden') === false) closeDetail();
+      applyFilters();
+    });
+  }
   // 标签可点击 → 触发搜索
   document.getElementById('dTags').innerHTML =
     (w.tags || []).map(t => `<span class="tag" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`).join('') ||
@@ -351,8 +410,6 @@ function renderPager() {
 
 /* ---------- 事件绑定 ---------- */
 document.addEventListener('DOMContentLoaded', async () => {
-  // 分类 tab 在数据加载后由 buildCatTabs() 动态生成并绑定
-
   let timer;
   document.getElementById('searchInput').addEventListener('input', () => {
     clearTimeout(timer);
@@ -363,6 +420,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('backBtn').addEventListener('click', closeDetail);
+
+  // Esc 关闭详情
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('detail').classList.contains('hidden')) {
+      closeDetail();
+    }
+  });
+
+  // 排序切换
+  const sortSel = document.getElementById('sortSelect');
+  if (sortSel) {
+    sortSel.addEventListener('change', () => {
+      state.sort = sortSel.value;
+      if (!document.getElementById('detail').classList.contains('hidden')) closeDetail();
+      applyFilters();
+    });
+  }
 
   // 收藏（localStorage，纯本地）
   const favBtn = document.getElementById('favBtn');

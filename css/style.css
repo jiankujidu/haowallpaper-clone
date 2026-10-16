@@ -77,6 +77,23 @@ button{font-family:inherit;cursor:pointer}
 /* 工具栏 */
 .toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:16px 0 18px}
 .cat-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.row-gap{width:100%}
+.tone-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:2px}
+.tone-tab{
+  background:var(--panel);border:1px solid var(--border);color:var(--text-2);
+  padding:4px 12px;border-radius:14px;font-size:12px;transition:.15s;
+}
+.tone-tab:hover{color:var(--text);border-color:var(--text-2)}
+.tone-tab.active{background:var(--panel-2);border-color:var(--accent-2);color:var(--accent-2)}
+.tone-tab i{font-style:normal;opacity:.55;margin-left:4px;font-size:10px}
+.tone-tab.active i{opacity:.75}
+.toolbar-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+.sort-select{
+  background:var(--panel);border:1px solid var(--border);color:var(--text-2);
+  padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;outline:none;
+}
+.sort-select:hover{color:var(--text);border-color:var(--text-2)}
+.sort-select option{background:var(--panel);color:var(--text)}
 .cat-tab{
   background:var(--panel);border:1px solid var(--border);color:var(--text-2);
   padding:7px 16px;border-radius:20px;font-size:13px;transition:.15s;
@@ -117,6 +134,16 @@ button{font-family:inherit;cursor:pointer}
   width:100%;height:100%;object-fit:cover;transition:.3s;
 }
 .card:hover .card-media img{transform:scale(1.05)}
+.card-hover-info{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:8px 10px;
+  background:linear-gradient(transparent,rgba(0,0,0,.72));
+  display:flex;gap:10px;align-items:center;
+  opacity:0;transition:.2s;pointer-events:none;
+}
+.card:hover .card-hover-info{opacity:1}
+.card-res{font-size:11px;color:#fff;font-weight:600}
+.card-dl{font-size:11px;color:#c8d0dc}
 .card-badge{
   position:absolute;top:10px;left:10px;
   background:rgba(0,0,0,.55);backdrop-filter:blur(4px);
@@ -139,7 +166,7 @@ button{font-family:inherit;cursor:pointer}
   display:flex;justify-content:space-between;align-items:center;
 }
 .card-sub .cat{color:var(--accent-2)}
-.card-sub .dl{color:var(--muted)}
+.card-sub .tone{color:var(--muted);font-size:11px}
 
 /* ===== 详情 ===== */
 .back-btn{
