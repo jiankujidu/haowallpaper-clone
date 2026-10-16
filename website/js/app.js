@@ -28,17 +28,20 @@ async function loadAll() {
   applyFilters();
 }
 
-// 本地海报路径：优先用数据里的 localPoster（scrape.py 生成的，匹配磁盘真实文件名），
-// GitHub Pages 无本地海报时自动回退远端 URL
+// 海报路径：GitHub Pages 项目站（URL 路径带 /haowallpaper-clone/）从仓库 downloads/posters/ 加载；
+// 本地预览（website/ 为站点根）从 posters/ 加载。原站图片有防盗链（403），远端 URL 仅作最后兜底
+const ON_PAGES = location.pathname.indexOf('/haowallpaper-clone') === 0;
+const POSTER_ROOT = ON_PAGES ? 'downloads/posters' : 'posters';
+
 function localPoster(w) {
   if (w.localPoster) {
     const norm = w.localPoster.replace(/\\/g, '/');
     const idx = norm.indexOf('posters/');
-    if (idx !== -1) return norm.slice(idx);
+    if (idx !== -1) return POSTER_ROOT + '/' + norm.slice(idx + 'posters/'.length);
   }
   const base = (w.poster || '').split('/').pop();
   if (!base) return '';
-  return `posters/${w.source || 'homeView'}/${base}`;
+  return `${POSTER_ROOT}/${w.source || 'homeView'}/${base}`;
 }
 
 function withRemoteFallback(w, imgEl) {
@@ -119,7 +122,7 @@ function openDetail(id) {
   detail.classList.remove('hidden');
 
   const v = document.getElementById('detailVideo');
-  v.poster = w.poster;
+  v.poster = localPoster(w) || w.poster;
   v.src = w.video;
   v.load();
   v.play().catch(() => {});
@@ -152,7 +155,8 @@ function openDetail(id) {
   const rel = state.all.filter(x => x.category === w.category && x.id !== w.id).slice(0, 3);
   document.getElementById('dRelated').innerHTML = rel.map(r => `
     <div class="rel-card" data-id="${r.id}">
-      <img loading="lazy" src="${r.poster}" alt="${escapeHtml(r.title)}">
+      <img loading="lazy" src="${localPoster(r) || r.poster}" alt="${escapeHtml(r.title)}"
+           onerror="this.onerror=null;this.src='${r.poster.replace(/'/g, "\\'")}'">
       <p>${escapeHtml(r.title)}</p>
     </div>`).join('') || '';
   document.querySelectorAll('#dRelated .rel-card').forEach(c =>
