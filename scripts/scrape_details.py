@@ -157,13 +157,15 @@ def main():
     ensure_done_set()
     print(f"checkpoint 已完成: {len(_done)}")
 
-    ids = []
-    with open(DATA, encoding="utf-8") as f:
-        for row in json.load(f):
-            wid = str(row.get("id") or "")
-            if wid and wid not in _done:
-                ids.append(wid)
+    data=json.load(open(DATA, encoding="utf-8"))
+    ids=[]
+    for row in data:
+        wid = str(row.get("id") or "")
+        if wid and wid not in _done:
+            ids.append(wid)
     print(f"待采: {len(ids)}")
+    if ids:
+        print("todo sample:", ids[:5])
 
     if args.limit:
         ids = ids[:args.limit]
