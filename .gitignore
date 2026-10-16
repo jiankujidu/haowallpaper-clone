@@ -27,3 +27,7 @@ website/preview.log
 # 详情页采集 checkpoint（大文件，本地工作数据，不入 git；wallpapers.json 已合并其结果）
 downloads/checkpoint/details.jsonl
 downloads/checkpoint/lock.details
+
+# 全量明文数据（52MB，超过 GitHub 推荐上限；Pages 实际读取 7MB 的 api/wallpapers.json.gz）
+# 本地保留副本供脚本使用，仅不纳入 git
+downloads/data/wallpapers.json
