@@ -35,8 +35,7 @@
         </a>
       </nav>
       <div class="topbar-actions">
-        <button class="ghost-btn">低功耗</button>
-        <button class="ghost-btn">标签页</button>
+        <a class="ghost-btn" id="homeLink" href="#" title="回到首页">首页</a>
       </div>
     </div>
   </header>
@@ -49,15 +48,11 @@
     <section class="toolbar">
       <div class="cat-tabs" id="catTabs">
         <button class="cat-tab active" data-cat="全部">全部</button>
-        <button class="cat-tab" data-cat="动漫｜二次元">动漫｜二次元</button>
-        <button class="cat-tab" data-cat="治愈｜自然">治愈｜自然</button>
-        <button class="cat-tab" data-cat="卡通角色">卡通角色</button>
-        <button class="cat-tab" data-cat="抽象｜科技">抽象｜科技</button>
-        <button class="cat-tab" data-cat="风景">风景</button>
+        <span class="cat-loading">分类加载中…</span>
       </div>
       <div class="search-box">
         <svg viewBox="0 0 1024 1024"><path d="M416 512a96 96 0 1 0 192 0 96 96 0 0 0-192 0z m288 256a288 288 0 1 1 0-576 288 288 0 0 1 0 576z"/></svg>
-        <input id="searchInput" type="text" placeholder="搜索壁纸，如 Chiikawa、夏季泳池…">
+        <input id="searchInput" type="text" placeholder="搜索壁纸标题或标签，如 五条悟、治愈…">
       </div>
     </section>
 
@@ -72,6 +67,8 @@
           <div class="detail-media">
             <img id="detailImg" alt="">
             <video id="detailVideo" loop muted playsinline hidden></video>
+            <span class="media-badge hidden" id="mediaBadge"></span>
+            <span class="hd-badge" id="hdBadge"></span>
           </div>
           <div class="detail-info">
             <h1 id="dTitle">壁纸</h1>
@@ -80,8 +77,7 @@
             <div class="creator" id="dCreator"></div>
             <div class="actions">
               <button class="primary-btn" id="dlBtn">下载</button>
-              <button class="ghost-btn">收藏</button>
-              <button class="ghost-btn">打赏 TA</button>
+              <button class="ghost-btn" id="favBtn">收藏</button>
             </div>
             <div class="related-head">相关推荐</div>
             <div id="dRelated" class="related"></div>

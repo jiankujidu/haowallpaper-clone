@@ -23,3 +23,7 @@ website/preview.log
 
 # GitHub Pages 站点入口（例外：根目录 index.html 需要进 git）
 !index.html
+
+# 详情页采集 checkpoint（大文件，本地工作数据，不入 git；wallpapers.json 已合并其结果）
+downloads/checkpoint/details.jsonl
+downloads/checkpoint/lock.details

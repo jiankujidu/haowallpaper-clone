@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>哲风壁纸 · 高清电脑动态壁纸</title>
+  <meta name="description" content="哲风壁纸 —— 4K 电脑动态壁纸与高清静态壁纸，覆盖动漫、二次元、治愈、夏日等分类。">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23274ec5'/><text x='16' y='22' font-size='18' text-anchor='middle' fill='white'>哲</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="darkBody">
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="logo">
+        <span class="logo-badge">哲</span>
+        <span class="logo-name">哲风壁纸</span>
+      </div>
+      <nav class="nav">
+        <a href="#" data-route="homeView" class="nav-link active">
+          <svg viewBox="0 0 1024 1024"><path d="M160 160v704h704V160zm-32-64h768a32 32 0 0 1 32 32v768a32 32 0 0 1-32 32H128a32 32 0 0 1-32-32V128a32 32 0 0 1 32-32z"/></svg>
+          <span>电脑壁纸</span>
+        </a>
+        <a href="#" data-route="mobileView" class="nav-link">
+          <svg viewBox="0 0 1024 1024"><path d="M224 768v96a64 64 0 0 0 64 64h448a64 64 0 0 0 64-64V768zm0-64h576V160a64 64 0 0 0-64-64H288a64 64 0 0 0-64 64zm304 288a48 48 0 1 1 0-96 48 48 0 0 1 0 96z"/></svg>
+          <span>手机壁纸</span>
+        </a>
+        <a href="#" data-route="headImg" class="nav-link">
+          <svg viewBox="0 0 1024 1024"><path d="M512 128a384 384 0 1 0 0 768 384 384 0 0 0 0-768"/></svg>
+          <span>头像制作</span>
+        </a>
+        <a href="#" data-route="forum" class="nav-link">
+          <svg viewBox="0 0 1024 1024"><path d="m174 855 135-45 24 12c69 26 142 40 219 40 212 0 384-166 384-352S724 160 512 160 128 327 128 512c0 69 25 139 71 199l22 29-46 115zM129 938A32 32 0 0 1 90 896l58-146C95 680 64 597 64 512 64 299 256 96 512 96s448 204 448 416-192 416-448 416a461 461 0 0 1-207-48l-175 58z"/></svg>
+          <span>壁纸社区</span>
+        </a>
+      </nav>
+      <div class="topbar-actions">
+        <a class="ghost-btn" id="homeLink" href="#" title="回到首页">首页</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- 加载提示（数据就绪后自动隐藏） -->
+    <div id="loadTip" class="load-tip"><span class="spinner"></span><span>壁纸数据加载中…</span></div>
+
+    <!-- 分类筛选 + 搜索 -->
+    <section class="toolbar">
+      <div class="cat-tabs" id="catTabs">
+        <button class="cat-tab active" data-cat="全部">全部</button>
+        <span class="cat-loading">分类加载中…</span>
+      </div>
+      <div class="search-box">
+        <svg viewBox="0 0 1024 1024"><path d="M416 512a96 96 0 1 0 192 0 96 96 0 0 0-192 0z m288 256a288 288 0 1 1 0-576 288 288 0 0 1 0 576z"/></svg>
+        <input id="searchInput" type="text" placeholder="搜索壁纸标题或标签，如 五条悟、治愈…">
+      </div>
+    </section>
+
+    <!-- 内容区：列表 / 详情 切换 -->
+    <section id="view" class="view">
+      <!-- 列表 -->
+      <div id="grid" class="grid"></div>
+      <!-- 详情 -->
+      <div id="detail" class="detail hidden">
+        <button class="back-btn" id="backBtn">← 返回列表</button>
+        <div class="detail-shell">
+          <div class="detail-media">
+            <img id="detailImg" alt="">
+            <video id="detailVideo" loop muted playsinline hidden></video>
+            <span class="media-badge hidden" id="mediaBadge"></span>
+            <span class="hd-badge" id="hdBadge"></span>
+          </div>
+          <div class="detail-info">
+            <h1 id="dTitle">壁纸</h1>
+            <div class="meta" id="dMeta"></div>
+            <div class="tags" id="dTags"></div>
+            <div class="creator" id="dCreator"></div>
+            <div class="actions">
+              <button class="primary-btn" id="dlBtn">下载</button>
+              <button class="ghost-btn" id="favBtn">收藏</button>
+            </div>
+            <div class="related-head">相关推荐</div>
+            <div id="dRelated" class="related"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 分页 -->
+    <div id="pager" class="pager"></div>
+  </main>
+
+  <footer class="footer">
+    <div>哲风壁纸 · 高清 4K 电脑 / 手机动态壁纸</div>
+    <div class="muted">数据来源：haowallpaper.com ｜ 仅供学习研究，请勿商用</div>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
